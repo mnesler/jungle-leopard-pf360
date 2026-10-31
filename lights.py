@@ -17,10 +17,48 @@ from openrgb.utils import RGBColor
 ORGB_DIR = Path(os.environ.get("APPDATA", Path.home())) / "JLDash" / "openrgb"
 ORGB_EXE = ORGB_DIR / "OpenRGB.exe"
 HOST, PORT = "127.0.0.1", 6742
-EFFECTS = ["Static", "Breathing", "Rainbow", "Color cycle", "Off"]
+EFFECTS = ["Claude", "Claude light", "Static", "Breathing", "Rainbow", "Color cycle", "Off"]
+
+# The Claude brand palette, ordered so neighbouring colours blend into a pleasing loop:
+# clay -> kraft -> manilla -> ivory -> heather -> sky -> olive -> fig -> book cloth -> clay
+CLAUDE_LIGHT = [
+    (217, 119, 87),   # clay
+    (212, 162, 127),  # kraft
+    (235, 219, 188),  # manilla
+    (240, 240, 235),  # ivory
+    (203, 202, 219),  # heather
+    (106, 155, 204),  # sky
+    (120, 140, 93),   # olive
+    (196, 102, 134),  # fig
+    (204, 120, 92),   # book cloth
+]
+
+
+# Dark version: the same brand hues, deeper and more saturated, with near-black troughs between
+# them so the colours stay distinct instead of blending into pastel.
+CLAUDE_DARK = [
+    (190, 70, 30),    # clay, deepened
+    (70, 22, 8),      # ember (dark trough)
+    (150, 98, 40),    # kraft, deepened
+    (45, 70, 25),     # olive
+    (12, 55, 95),     # sky, deepened
+    (40, 30, 120),    # heather -> indigo
+    (125, 25, 75),    # fig
+    (45, 12, 20),     # wine (dark trough)
+]
+
+
+def palette_color(p, palette=CLAUDE_DARK):
+    """Smoothly interpolate around a looping palette; p is 0..1."""
+    n = len(palette)
+    x = (p % 1.0) * n
+    i = int(x)
+    f = x - i
+    a, b = palette[i % n], palette[(i + 1) % n]
+    return tuple(int(a[k] + (b[k] - a[k]) * f) for k in range(3))
 DEFAULTS = {
     "enabled": False,
-    "effect": "Static",
+    "effect": "Claude",
     "color": [217, 119, 87],
     "speed": 50,  # 1-100
     "leds": 32,
@@ -71,6 +109,10 @@ def frame(effect, color, speed, n, t):
         k = (math.sin(t * rate * math.pi) + 1) / 2
         k = 0.05 + 0.95 * k
         return [(int(r * k), int(g * k), int(b * k))] * n
+    if effect in ("Claude", "Claude light"):
+        # the whole palette spread along every LED, drifting slowly along the header
+        pal = CLAUDE_DARK if effect == "Claude" else CLAUDE_LIGHT
+        return [palette_color(i / max(n, 1) - t * rate * 0.06, pal) for i in range(n)]
     if effect == "Rainbow":
         out = []
         for i in range(n):

@@ -1,2 +1,10 @@
 __pycache__/
 *.pyc
+gui.err
+test.gif
+sheet.png
+test_pic.png
+test.mp4
+win_*.png
+claude_palette.png
+claude_dark.png

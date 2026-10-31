@@ -3,3 +3,10 @@ pillow
 psutil
 requests
 openrgb-python
+wmi
+winrt-runtime
+winrt-Windows.Media.Control
+winrt-Windows.Storage.Streams
+winrt-Windows.Foundation
+winrt-Windows.Foundation.Collections
+imageio-ffmpeg

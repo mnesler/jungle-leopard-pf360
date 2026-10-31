@@ -29,7 +29,7 @@ def image_frame(jpeg):
 
 class Display:
     def __init__(self, port=None):
-        self.ser = serial.Serial(port or find_port(), 115200, timeout=1.0)
+        self.ser = serial.Serial(port or find_port(), 115200, timeout=1.0, write_timeout=3.0)
         self.ser.dtr = True
         self.ser.rts = True
 

@@ -1,4 +1,5 @@
 """Persistent user settings (JSON in %APPDATA%\JLDash)."""
+import copy
 import json
 import os
 from pathlib import Path
@@ -7,7 +8,11 @@ PATH = Path(os.environ.get("APPDATA", Path.home())) / "JLDash" / "settings.json"
 DEFAULTS = {
     "brightness": 95,
     "rotate_seconds": 10,
-    "screens": ["system", "claude", "usage"],  # enabled, in order
+    "screens": ["system", "claude"],  # enabled screens
+    "order": None,  # display order of all screens (None = default)
+    "known": None,  # screens the user has already seen (new ones start enabled)
+    "media_path": "",  # legacy single picture (migrated into the gallery)
+    "gallery": {"items": [], "image_seconds": 8},
     "pinned": None,
     "lights": {},  # overrides for lights.DEFAULTS
 }
@@ -15,9 +20,9 @@ DEFAULTS = {
 
 def load():
     try:
-        return {**DEFAULTS, **json.loads(PATH.read_text(encoding="utf8"))}
+        return {**copy.deepcopy(DEFAULTS), **json.loads(PATH.read_text(encoding="utf8"))}
     except Exception:
-        return dict(DEFAULTS)
+        return copy.deepcopy(DEFAULTS)
 
 
 def save(data):
