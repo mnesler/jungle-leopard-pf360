@@ -181,11 +181,15 @@ def to_jpeg(img):
 class Runner:
     """Drives the LCD. Reconnects automatically if the port drops or is busy."""
 
-    def __init__(self):
+    def __init__(self, brightness=95, rotate_seconds=SCREEN_SECONDS, screens=None, pinned=None):
         self.stop = threading.Event()
         self.paused = False
-        self.pinned = None  # screen name, or None to rotate
+        self.pinned = pinned  # screen name, or None to rotate
+        self.brightness = brightness
+        self.rotate_seconds = rotate_seconds
+        self.screens = list(screens or SCREENS)
         self.status = "starting"
+        self.current = None  # name of the screen being shown
         self.thread = threading.Thread(target=self._run, daemon=True)
 
     def start(self):
@@ -200,20 +204,26 @@ class Runner:
         try:
             d.prime()
             d.command(0x11, read=False)
-            self.status = "running"
-            last_ka, t0 = 0.0, time.time()
+            applied = None
+            idx, switched, last_ka = 0, time.time(), 0.0
             while not self.stop.is_set():
                 now = time.time()
                 if now - last_ka > 1.0:
                     d.keepalive()
                     last_ka = now
+                if applied != self.brightness:
+                    d.command(0x03, [max(0, min(100, int(self.brightness)))], read=False)
+                    applied = self.brightness
                 if self.paused:
                     self.status = "paused"
                     time.sleep(0.25)
                     continue
                 self.status = "running"
-                names = list(SCREENS)
-                name = self.pinned or names[int((now - t0) // SCREEN_SECONDS) % len(names)]
+                names = [n for n in self.screens if n in SCREENS] or list(SCREENS)
+                if now - switched >= self.rotate_seconds:
+                    idx, switched = idx + 1, now
+                name = self.pinned if self.pinned in SCREENS else names[idx % len(names)]
+                self.current = name
                 d.send_jpeg(to_jpeg(SCREENS[name]()))
                 time.sleep(0.25)
         finally:

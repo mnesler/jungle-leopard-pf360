@@ -2,4 +2,4 @@ pyserial
 pillow
 psutil
 requests
-pystray
+openrgb-python
