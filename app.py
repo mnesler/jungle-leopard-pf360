@@ -3,6 +3,7 @@
 Usage: python app.py [seconds] [--screen NAME]   (screens: system, claude, usage)
 """
 import io
+import subprocess
 import sys
 import threading
 import time
@@ -65,6 +66,30 @@ class ClaudeStatus:
             time.sleep(self.every)
 
 
+class GpuStats:
+    """NVIDIA GPU stats via nvidia-smi, polled in the background (no driver or admin needed)."""
+
+    def __init__(self, every=1.0):
+        self.every = every
+        self.data = None
+        threading.Thread(target=self._loop, daemon=True).start()
+
+    def _loop(self):
+        cmd = ["nvidia-smi", "--query-gpu=temperature.gpu,utilization.gpu,memory.used,memory.total",
+               "--format=csv,noheader,nounits"]
+        while True:
+            try:
+                out = subprocess.run(cmd, capture_output=True, text=True, timeout=5,
+                                     creationflags=0x08000000).stdout  # CREATE_NO_WINDOW
+                t, u, mu, mt = (float(x) for x in out.strip().splitlines()[0].split(","))
+                self.data = {"temp": t, "util": u, "mem_used": mu, "mem_total": mt}
+            except Exception:
+                self.data = None  # no NVIDIA GPU / nvidia-smi missing
+                time.sleep(10)
+            time.sleep(self.every)
+
+
+gpu = GpuStats()
 claude = ClaudeStatus()
 
 
@@ -80,16 +105,24 @@ def screen_system():
     now = datetime.now()
     d.text((60, 40), now.strftime("%H:%M"), fill=FG, font_size=120)
     d.text((64, 175), now.strftime("%A, %B %d"), fill=DIM, font_size=36)
-    for i, (name, val, col) in enumerate(
-        [("CPU", psutil.cpu_percent(), (80, 200, 255)), ("RAM", psutil.virtual_memory().percent, (160, 120, 255))]
-    ):
-        y = 280 + i * 120
+    g = gpu.data
+    rows = [("CPU", psutil.cpu_percent(), "", (80, 200, 255))]
+    if g:
+        rows.append(("GPU", g["util"], f"{g['temp']:.0f}°C", (120, 220, 140)))
+    rows.append(("RAM", psutil.virtual_memory().percent, "", (160, 120, 255)))
+    for i, (name, val, extra, col) in enumerate(rows):
+        y = 250 + i * 115
         d.text((60, y), name, fill=DIM, font_size=36)
+        if extra:
+            d.text((W - 230, y + 4), extra, fill=DIM, font_size=36, anchor="ra")
         d.text((W - 60, y), f"{val:.0f}%", fill=FG, font_size=48, anchor="ra")
-        bar(d, 60, y + 60, W - 120, 24, val / 100, col)
+        bar(d, 60, y + 55, W - 120, 24, val / 100, col)
     t = cpu_temp()
+    if t is None and g:
+        t = g["temp"]  # no CPU sensor on Windows: show GPU temp instead
     if t is not None:
         d.text((W - 60, 60), f"{t:.0f}°C", fill=FG, font_size=64, anchor="ra")
+        d.text((W - 60, 130), "CPU temp" if cpu_temp() is not None else "GPU temp", fill=DIM, font_size=26, anchor="ra")
     return img
 
 

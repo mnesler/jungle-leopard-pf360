@@ -1,6 +1,7 @@
 """Jungle Leopard Dashboard - small control window for the cooler LCD."""
 import os
 import sys
+import threading
 import tkinter as tk
 from tkinter import colorchooser, ttk
 
@@ -139,6 +140,30 @@ class Gui:
         self.l_leds = tk.IntVar(value=lc["leds"])
         ttk.Spinbox(f, from_=1, to=64, width=5, textvariable=self.l_leds, command=self.apply_lights).grid(row=3, column=1, sticky="w", padx=8, pady=(8, 0))
         self.l_leds.trace_add("write", lambda *a: self.apply_lights())
+
+        self.l_install = ttk.Button(f, text="Install OpenRGB", style="Accent.TButton", command=self.install_orgb)
+        if not lights.openrgb_installed():
+            self.l_install.grid(row=3, column=2, columnspan=2, sticky="e", pady=(8, 0))
+
+    def install_orgb(self):
+        self.l_install.config(state="disabled", text="Downloading...")
+
+        def work():
+            try:
+                lights.install_openrgb()
+                err = None
+            except Exception as e:
+                err = str(e)[:60]
+            self.root.after(0, lambda: self._installed(err))
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _installed(self, err):
+        if err:
+            self.l_install.config(state="normal", text="Retry install")
+            self.lights.status = "install failed: " + err
+        else:
+            self.l_install.grid_remove()
 
     # ---- actions ----
     def save(self):

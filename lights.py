@@ -28,6 +28,39 @@ DEFAULTS = {
 }
 
 
+OPENRGB_URL = "https://codeberg.org/OpenRGB/OpenRGB/releases/download/release_1.1/OpenRGB_1.1_Windows_64_8e16de2.zip"
+OPENRGB_SHA256 = "63291726c6fc84eb479ef2ee752e97e1187f6ce9c49fd27eee40ded588a8172a"
+
+
+def openrgb_installed():
+    return ORGB_EXE.exists()
+
+
+def install_openrgb():
+    """Download the pinned portable OpenRGB release, verify its hash, extract to ORGB_DIR."""
+    import hashlib
+    import io
+    import zipfile
+
+    import requests
+
+    data = requests.get(OPENRGB_URL, timeout=120).content
+    if hashlib.sha256(data).hexdigest() != OPENRGB_SHA256:
+        raise RuntimeError("OpenRGB download failed its hash check; nothing was installed")
+    ORGB_DIR.mkdir(parents=True, exist_ok=True)
+    root = ORGB_DIR.resolve()
+    with zipfile.ZipFile(io.BytesIO(data)) as z:
+        for info in z.infolist():
+            parts = Path(info.filename).parts[1:]  # drop the top-level folder
+            if not parts or info.is_dir():
+                continue
+            target = (ORGB_DIR.joinpath(*parts)).resolve()
+            if root not in target.parents:
+                raise RuntimeError("unsafe path in archive: %s" % info.filename)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(z.read(info))
+
+
 def frame(effect, color, speed, n, t):
     """Return a list of n (r, g, b) tuples for time t (seconds)."""
     r, g, b = color
