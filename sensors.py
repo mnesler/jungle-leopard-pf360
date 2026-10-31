@@ -1,12 +1,14 @@
 """Background data pollers. Each runs in a daemon thread and exposes plain attributes."""
 import asyncio
 import io
+import re
 import subprocess
 import threading
 import time
 from collections import deque
 
 import psutil
+import requests
 
 CREATE_NO_WINDOW = 0x08000000
 
@@ -122,47 +124,71 @@ class MediaInfo:
 
 
 # ---------- LibreHardwareMonitor (optional: CPU temp, fan RPM) ----------
+def _num(text):
+    """'45,0 °C' / '1203 RPM' -> float (None if not a number)."""
+    m = re.search(r"-?\d+(?:[.,]\d+)?", str(text))
+    return float(m.group(0).replace(",", ".")) if m else None
+
+
 class HwSensors:
-    """Reads LibreHardwareMonitor's WMI namespace if the app is running (as admin)."""
+    """Reads LibreHardwareMonitor's built-in web server (http://localhost:8085/data.json).
+
+    The app must be running as administrator; hwapp.py installs and starts it.
+    """
+    URL = "http://127.0.0.1:8085/data.json"
+    CPU_TEMP_NAMES = ("CPU Package", "Core (Tctl/Tdie)", "Core (Tdie)", "CPU Total", "Package")
 
     def __init__(self, every=2.0):
         self.every = every
         self.available = False
         self.cpu_temp = None
         self.cpu_power = None
-        self.fans = []  # [(name, rpm)]
+        self.fans = []  # [(name, rpm)] excluding GPU fans (those come from nvidia-smi)
         _thread(self._loop)
 
+    def _walk(self, node, path, out):
+        text = node.get("Text", "")
+        kids = node.get("Children") or []
+        if not kids and node.get("Value") not in (None, ""):
+            out.append((path, text, node["Value"]))
+        for k in kids:
+            self._walk(k, path + [text], out)
+
+    def _parse(self, tree):
+        leaves = []
+        self._walk(tree, [], leaves)
+        temps, powers, fans = {}, {}, []
+        for path, name, value in leaves:
+            group = path[-1] if path else ""
+            v = _num(value)
+            if v is None:
+                continue
+            hw = " ".join(path).lower()
+            gpu = any(k in hw for k in ("nvidia", "geforce", "radeon", "intel arc"))
+            if group.startswith("Temperature") and not gpu and "gpu" not in name.lower():
+                temps.setdefault(name, v)
+            elif group.startswith("Power") and "package" in name.lower() and not gpu:
+                powers.setdefault(name, v)
+            elif group.startswith("Fan") and not gpu and "RPM" in str(value) and v > 0:
+                fans.append((name, v))
+        self.cpu_temp = next((temps[k] for k in self.CPU_TEMP_NAMES if k in temps), None)
+        if self.cpu_temp is None:
+            self.cpu_temp = next((v for k, v in temps.items() if "CPU" in k or "Core" in k), None)
+        self.cpu_power = next(iter(powers.values()), None)
+        self.fans = fans
+
     def _loop(self):
-        try:
-            import pythoncom
-            import wmi
-            pythoncom.CoInitialize()
-        except Exception:
-            return  # wmi not installed
-        conn = None
         while True:
             try:
-                if conn is None:
-                    conn = wmi.WMI(namespace="root\\LibreHardwareMonitor")
-                sensors = conn.Sensor()
-                temps = {s.Name: s.Value for s in sensors if s.SensorType == "Temperature" and s.Value}
-                for key in ("CPU Package", "Core (Tctl/Tdie)", "Core (Tdie)", "CPU Total"):
-                    if key in temps:
-                        self.cpu_temp = temps[key]
-                        break
-                else:
-                    self.cpu_temp = next((v for k, v in temps.items() if "CPU" in k or "Core" in k), None)
-                pw = [s.Value for s in sensors if s.SensorType == "Power" and "Package" in s.Name]
-                self.cpu_power = pw[0] if pw else None
-                self.fans = [(s.Name, s.Value) for s in sensors if s.SensorType == "Fan" and s.Value is not None]
+                r = requests.get(self.URL, timeout=2)
+                r.raise_for_status()
+                self._parse(r.json())
                 self.available = True
             except Exception:
-                conn = None
                 self.available = False
                 self.cpu_temp = self.cpu_power = None
                 self.fans = []
-                time.sleep(13)
+                time.sleep(8)
             time.sleep(self.every)
 
 

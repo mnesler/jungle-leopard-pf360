@@ -10,6 +10,7 @@ from PIL import ImageTk
 
 import app
 import gallery as gal
+import hwapp
 import lights
 import screens
 import sensors
@@ -563,7 +564,35 @@ class Gui:
             lab = tk.Label(f, textvariable=v, bg=PANEL, fg=DIM, anchor="w")
             lab.grid(row=5 + i, column=1, sticky="w", padx=14)
             self.src[key] = (v, lab)
+        self.hw_btn = ttk.Button(f, text="", style="Accent.TButton", command=self.hw_action)
+        self.hw_btn.grid(row=10, column=0, sticky="w", pady=(12, 0))
+        ttk.Label(f, text="Optional: CPU temperature and fan RPM via LibreHardwareMonitor (runs as administrator).",
+                  style="Dim.TLabel", wraplength=470).grid(row=11, column=0, columnspan=2, sticky="w", pady=(4, 0))
         self.apply_bright()
+
+    def hw_action(self):
+        if not hwapp.installed():
+            self.hw_btn.config(state="disabled", text="Downloading...")
+
+            def work():
+                try:
+                    hwapp.install()
+                    err = None
+                except Exception as e:
+                    err = str(e)[:80]
+                self.root.after(0, lambda: self._hw_installed(err))
+
+            threading.Thread(target=work, daemon=True).start()
+        elif not sensors.hw.available:
+            if messagebox.askokcancel(
+                    "Start sensor app",
+                    "LibreHardwareMonitor needs administrator rights to read CPU and fan sensors."
+                    " Windows will ask you to approve it. It starts hidden in the tray.", parent=self.root):
+                hwapp.launch_elevated()
+
+    def _hw_installed(self, err):
+        if err:
+            messagebox.showerror("Install failed", err, parent=self.root)
 
     def apply_bright(self):
         n = int(round(self.bright.get()))
@@ -609,6 +638,12 @@ class Gui:
             v, lab = self.src[key]
             v.set(text)
             lab.config(fg=col)
+        if not hwapp.installed():
+            self.hw_btn.config(state="normal", text="Install sensor app")
+        elif sensors.hw.available:
+            self.hw_btn.config(state="disabled", text="Sensor app running")
+        else:
+            self.hw_btn.config(state="normal", text="Start sensor app (admin)")
 
     def tick(self):
         s = self.runner.status
