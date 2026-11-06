@@ -1,4 +1,4 @@
-# Jungle Leopard Dashboard
+# Jungle Leopard PF360
 
 A small Windows app that drives the LCD and fan lights of a Jungle Leopard (TZMRIT-style)
 AIO cooler, replacing the vendor's Electron app.
