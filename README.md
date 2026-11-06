@@ -1,3 +1,5 @@
+![Jungle Leopard PF360 dashboard](docs/dash.png)
+
 # Jungle Leopard PF360
 
 A small Windows app that drives the LCD and fan lights of a Jungle Leopard (TZMRIT-style)
